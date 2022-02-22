@@ -1,159 +1,114 @@
-// Watch my video: https://www.youtube.com/watch?v=W6HpX85ICh8
+#include <windows.h> 
+#include <tlhelp32.h> 
+#include <shlwapi.h> 
+#include <conio.h> 
+#include <stdio.h>
+#include <string>
 #include <iostream>
 #include <Windows.h>
 #include <TlHelp32.h>
+#include <iostream>
+using namespace std;
+#define WIN32_LEAN_AND_MEAN 
+#define CREATE_THREAD_ACCESS (PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ)
 
-void display_usage(const char* argv0_)
+DWORD getTargetProcessID(const wchar_t* targetProcName)
 {
-	std::cout << "Usage: " << argv0_ << " <DLL File> <[-c <Program Path To Execute>] | [-p <Process Name>] | [-w <Window Title>]>" << std::endl;
+    // PROCESSENTRY32 is used to open and get information about a running process..
+    PROCESSENTRY32 entry;
+    entry.dwSize = sizeof(PROCESSENTRY32);
+
+    // We use a th32snapprocess to iterate through all running processes.
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
+
+    // Success check oon the snapshot tool.
+    if (!hSnap) {
+        throw "Snapshot tool failed to open";
+    }
+
+    // If a first process exist (there are running processes), iterate through
+    // all running processes.
+    DWORD ProcID = NULL;
+    if (Process32First(hSnap, &entry)) {
+        do
+        {
+            // If the current process entry is the target process, store its ID.
+            if (!wcscmp(entry.szExeFile, targetProcName))
+            {
+                ProcID = entry.th32ProcessID;
+            }
+        } while (Process32Next(hSnap, &entry) && !ProcID);        // Move on to the next running process.
+    }
+    else {
+        // If there was no first process, notify the user.
+        throw "No running processes found";
+    }
+
+    return ProcID;
 }
 
-DWORD get_process_id_by_creation(char* program_path_, HANDLE* creation_handle_)
+bool inject(const wchar_t* targetProcName, const char* dllName)
 {
-	// initalize variables
-	STARTUPINFO startup_information;
-	PROCESS_INFORMATION process_information;
-	memset(&startup_information, 0, sizeof(startup_information));
-	memset(&process_information, 0, sizeof(process_information));
+    try
+    {
+        // Get the process id of the target process.
+        DWORD targetProcID = getTargetProcessID(targetProcName);
+        if (!targetProcID) {
+            throw "Target process Was not found";
+        }
 
-	startup_information.cb = sizeof(startup_information);
+        // Get a static address of the LoadLibrary function as a thread-start-routine function.
+        LPTHREAD_START_ROUTINE funcLoadLibrary = (LPTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandleA("Kernel32.dll"), "LoadLibraryA");
+        if (!funcLoadLibrary) {
+            throw "Failed to retrieve a static function pointer to `LoadLbraryA`";
+        }
 
-	// create process
-	if (CreateProcess(NULL, program_path_, 0, 0, false, CREATE_SUSPENDED, 0, 0, &startup_information, &process_information))
-	{
-		*creation_handle_ = process_information.hThread;
-		return process_information.dwProcessId;
-	}
+        // Open the target process.
+        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, targetProcID);
+        if (hProcess == INVALID_HANDLE_VALUE) {
+            throw "Failed to open target process";
+        }
 
-	return NULL;
+        // Virtually allocate memory for the path of the dll in the target process.
+        LPVOID pDllPathAddr = VirtualAllocEx(hProcess, 0, strlen(dllName) + 1, MEM_COMMIT, PAGE_READWRITE);
+        if (!pDllPathAddr) {
+            throw "Failed to allocate memory in the target process";
+        }
+
+        // Write the dll path to the target process using WPM.
+        WriteProcessMemory(hProcess, pDllPathAddr, (LPVOID)dllName, strlen(dllName) + 1, NULL);
+
+        // Create a remote thread in the target process with LoadLibrary to load our dll into the target process.
+        HANDLE hRemoteThread = CreateRemoteThread(hProcess, NULL, NULL, funcLoadLibrary, pDllPathAddr, NULL, NULL);
+        if (!hRemoteThread || hRemoteThread == INVALID_HANDLE_VALUE) {
+            throw "Failed to load dll into target process";
+        }
+
+        // Wait until the remote thread is done loading the dll.
+        WaitForSingleObject(hRemoteThread, INFINITE);
+    }
+    catch (const char* err) {
+        std::cout << "An erro occurred: " << err << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
-DWORD get_process_id_by_process_name(const char* process_name_)
+/*
+Function to retrieve the ID of a running process.
+Input:
+    targetProcName - The exe file name of the target process.
+Output: The process's ID.
+*/
+#define TARGET_PROC L"Notepad.exe"
+#define DLL_NAME "../Debug/injectdll.dll"
+int main()
 {
-	PROCESSENTRY32 process_entry = {sizeof(PROCESSENTRY32)};
-	HANDLE processes_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 
-	// loop through all process to find one that matches the process_name_
-	if (Process32First(processes_snapshot, &process_entry))
-	{
-		do
-		{
-			if (strcmp(process_entry.szExeFile, process_name_) == 0)
-			{
-				CloseHandle(processes_snapshot);
-				return process_entry.th32ProcessID;
-			}
-		} while (Process32Next(processes_snapshot, &process_entry));
-	}
+    bool success = inject(TARGET_PROC, "D:\\Magshimim\\Magshimim - Assembly\\Lesson17\\injectDLL\\x64\\Release\\mydll.dll");
 
-	CloseHandle(processes_snapshot);
-	return NULL;
-}
+    std::cout << "Did the injecition succeded? " << success << std::endl;
 
-DWORD get_process_id_by_window_title(const char* window_title_)
-{
-	// get a handle to window using the window name
-	HWND window_handle = FindWindow(NULL, window_title_);
-	if (window_handle == NULL)
-	{
-		return NULL;
-	}
-
-	// return the process id of the window handle we found
-	DWORD process_id;
-	GetWindowThreadProcessId(window_handle, &process_id);
-	return process_id;
-}
-
-bool inject_dll(DWORD process_id_, const char* dll_file_)
-{
-	// get the full path of the dll file
-	TCHAR full_dll_path[MAX_PATH];
-	GetFullPathName(dll_file_, MAX_PATH, full_dll_path, NULL);
-
-	// get the function LoadLibraryA
-	LPVOID load_library = GetProcAddress(GetModuleHandle("kernel32.dll"), "LoadLibraryA");
-	if (load_library == NULL)
-	{
-		return false;
-	}
-
-	// open the process
-	HANDLE process_handle = OpenProcess(PROCESS_ALL_ACCESS, false, process_id_);
-	if (process_handle == NULL)
-	{
-		return false;
-	}
-
-	// allocate space to write the dll location
-	LPVOID dll_parameter_address = VirtualAllocEx(process_handle, 0, strlen(full_dll_path), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-	if (dll_parameter_address == NULL)
-	{
-		CloseHandle(process_handle);
-		return false;
-	}
-
-	// write the dll location to the space we previously allocated
-	BOOL wrote_memory = WriteProcessMemory(process_handle, dll_parameter_address, full_dll_path, strlen(full_dll_path), NULL);
-	if (wrote_memory == false)
-	{
-		CloseHandle(process_handle);
-		return false;
-	}
-
-	// launch the dll using LoadLibraryA
-	HANDLE dll_thread_handle = CreateRemoteThread(process_handle, 0, 0, (LPTHREAD_START_ROUTINE)load_library, dll_parameter_address, 0, 0);
-	if (dll_thread_handle == NULL)
-	{
-		CloseHandle(process_handle);
-		return false;
-	}
-
-	CloseHandle(dll_thread_handle);
-	CloseHandle(process_handle);
-	return true;
-}
-
-int main(int argc_, char** argv_)
-{
-	// ensure proper usage
-	if (argc_ != 4 || strlen(argv_[2]) != 2)
-	{
-		display_usage(argv_[0]);
-		return -1;
-	}
-
-	// obtain the process ID
-	DWORD process_id = NULL;
-	HANDLE creation_handle = NULL;
-	switch (argv_[2][1])
-	{
-	case 'C':
-	case 'c':
-		process_id = get_process_id_by_creation(argv_[3], &creation_handle);
-		break;
-	case 'P':
-	case 'p':
-		process_id = get_process_id_by_process_name(argv_[3]);
-		break;
-	case 'W':
-	case 'w':
-		process_id = get_process_id_by_window_title(argv_[3]);
-		break;
-	default:
-		display_usage(argv_[0]);
-		return -2;
-	}
-
-	// inject the dll
-	std::cout << "Obtained Process ID: " << process_id << std::endl;
-	std::cout << "Injection: " << (inject_dll(process_id, argv_[1]) ? "Success" : "Failure") << std::endl;
-
-	// if we created the process, resume it
-	if (creation_handle)
-	{
-		ResumeThread(creation_handle);
-	}
-
-	return 0;
+    return 0;
 }
