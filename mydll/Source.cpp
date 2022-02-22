@@ -1,9 +1,9 @@
 #include "windows.h"
-extern "C" __declspec(dllimport) void mess();
+extern "C" __declspec(dllimport) void showMessageBox();
 // Other option would be-
 // #include "mydll.h"
 int main()
 {
-	mess();
+	showMessageBox();
 	return 0;
 }

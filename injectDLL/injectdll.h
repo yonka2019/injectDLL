@@ -6,5 +6,5 @@
 #endif
 extern "C"
 {
-	DECLDIR void mess();
+	DECLDIR void showMessageBox();
 }

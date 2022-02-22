@@ -5,8 +5,8 @@
 
 extern "C"
 {
-	DECLDIR void mess() {
-		MessageBoxA(NULL, "HELLO THERE", "From Notepad", NULL);
+	DECLDIR void showMessageBox() {
+		MessageBoxA(NULL, "Woah! thats incredible =O", "[Success] DLL Injected into Notepad.exe", NULL);
 	}
 }
 BOOL APIENTRY DllMain(HANDLE hModule, // Handle to DLL module
@@ -15,22 +15,10 @@ BOOL APIENTRY DllMain(HANDLE hModule, // Handle to DLL module
 {
 	switch (ul_reason_for_call)
 	{
-	case DLL_PROCESS_ATTACH:
-		// A process is loading the DLL.
-		mess();
-		break;
-	case DLL_THREAD_ATTACH:
-		// A process is creating a new thread.
-		mess();
-		break;
-	case DLL_THREAD_DETACH:
-		// A thread exits normally.
-		mess();
-		break;
-	case DLL_PROCESS_DETACH:
-		mess();
-		// A process unloads the DLL.
-		break;
+		case DLL_PROCESS_ATTACH:
+			// A process is loading the DLL.
+			showMessageBox();
+			break;
 	}
 	return TRUE;
 }
