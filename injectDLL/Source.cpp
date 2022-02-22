@@ -1,20 +1,27 @@
 #include "windows.h"
 #include "TlHelp32.h"
+#include <iostream>
 #define DLL "D:\\messageBoxDLL.dll"
+#define PROC "Notepad.exe" // Windows 11 - Notepad.exe
 
-bool injectDLL(DWORD process_id_, const char* dll_path);
-DWORD get_process_id_by_process_name(const char* process_name_);
+bool injectDLL(DWORD processID, const char* dllPath);
+DWORD getProcessIDByName(const char* process_name_);
 
 int main()
 {
+	DWORD processID = getProcessIDByName(PROC);
 
+	std::cout << "Process ID matched: " << processID << std::endl;
+	std::cout << "Injection: " << (injectDLL(processID, DLL) ? "Success" : "Fail") << std::endl;
+
+	return 0;
 }
 /// <summary>
 /// Returns the process id by the process name
 /// </summary>
 /// <param name="process_name_">Process name (for example: Notepad.exe)</param>
 /// <returns>Process ID accroding the process name</returns>
-DWORD get_process_id_by_process_name(const char* process_name_)
+DWORD getProcessIDByName(const char* processName)
 {
 	PROCESSENTRY32 process_entry = { sizeof(PROCESSENTRY32) };
 	HANDLE processes_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -24,7 +31,7 @@ DWORD get_process_id_by_process_name(const char* process_name_)
 	{
 		do
 		{
-			if (strcmp(process_entry.szExeFile, process_name_) == 0)
+			if (strcmp(process_entry.szExeFile, processName) == 0)
 			{
 				CloseHandle(processes_snapshot);
 				return process_entry.th32ProcessID;
@@ -41,18 +48,18 @@ DWORD get_process_id_by_process_name(const char* process_name_)
 /// <param name="process_id_">Process id to inject into the given DLL</param>
 /// <param name="dll_path">Path of the dll to inject</param>
 /// <returns>True if success, either, false.</returns>
-bool injectDLL(DWORD process_id, const char* dll_path)
+bool injectDLL(DWORD processID, const char* dllPath)
 {
 	// Get full path of DLL to inject
 	char dllFullName[MAX_PATH] = { 0 };
 	DWORD err;
-	GetFullPathNameA(dll_path, MAX_PATH, dllFullName, NULL);
+	GetFullPathNameA(dllPath, MAX_PATH, dllFullName, NULL);
 
 	// Get LoadLibrary function address –
 	// the address doesn't change at remote process
 	PVOID addrLoadLibrary = (PVOID)GetProcAddress(GetModuleHandle("kernel32.dll"), "LoadLibraryA");
 	// Open remote process
-	HANDLE proc = OpenProcess(PROCESS_ALL_ACCESS, false, process_id);
+	HANDLE proc = OpenProcess(PROCESS_ALL_ACCESS, false, processID);
 
 	// Get a pointer to memory location in remote process,
 	// big enough to store DLL path
