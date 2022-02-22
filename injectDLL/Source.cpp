@@ -1,6 +1,7 @@
 #include "windows.h"
 #include "TlHelp32.h"
 #include <iostream>
+
 #define DLL "D:\\messageBoxDLL.dll"
 #define PROC "Notepad.exe" // Windows 11 - Notepad.exe
 
@@ -26,7 +27,7 @@ DWORD getProcessIDByName(const char* processName)
 	PROCESSENTRY32 process_entry = { sizeof(PROCESSENTRY32) };
 	HANDLE processes_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 
-	// loop through all process to find one that matches the process_name_
+	// loop through all process to find one that matches the processName
 	if (Process32First(processes_snapshot, &process_entry))
 	{
 		do
@@ -66,22 +67,22 @@ bool injectDLL(DWORD processID, const char* dllPath)
 	PVOID memAddr = (PVOID)VirtualAllocEx(proc, 0, strlen(dllFullName), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	if (NULL == memAddr) {
 		err = GetLastError();
-		return 0;
+		return false;
 	}
 	// Write DLL name to remote process memory
 	BOOL check = WriteProcessMemory(proc, memAddr, dllFullName, strlen(dllFullName), NULL);
 	if (0 == check) {
 		err = GetLastError();
-		return 0;
+		return false;
 	}
 	// Open remote thread, while executing LoadLibrary
 	// with parameter DLL name, will trigger DLLMain
 	HANDLE hRemote = CreateRemoteThread(proc, 0, 0, (LPTHREAD_START_ROUTINE)addrLoadLibrary, memAddr, 0, 0);
 	if (NULL == hRemote) {
 		err = GetLastError();
-		return 0;
+		return false;
 	}
 	WaitForSingleObject(hRemote, INFINITE);
 	check = CloseHandle(hRemote);
-	return 0;
+	return true;
 }

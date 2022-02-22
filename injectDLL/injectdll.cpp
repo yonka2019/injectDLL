@@ -6,7 +6,7 @@
 extern "C"
 {
 	DECLDIR void showMessageBox() {
-		MessageBoxA(NULL, "Woah! thats incredible =O", "[Success] DLL Injected into Notepad.exe", NULL);
+		MessageBoxA(NULL, "DLL successfully injected into Notepad.exe", "Success.", NULL);
 	}
 }
 BOOL APIENTRY DllMain(HANDLE hModule, // Handle to DLL module
